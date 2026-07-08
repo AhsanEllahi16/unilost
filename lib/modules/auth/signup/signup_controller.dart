@@ -1,15 +1,19 @@
+// lib/modules/auth/signup/signup_controller.dart
 import 'package:get/get.dart';
 import '../../../routes/app_routes.dart';
 import '../../../repositories/auth_repository.dart';
+import '../../../utils/snackbars.dart';
 
 class SignupControllerX extends GetxController {
   final AuthRepository _repo;
 
   SignupControllerX(this._repo);
 
-  final name = ''.obs;
-  final email = ''.obs;
+  final name     = ''.obs;
+  final email    = ''.obs;
   final password = ''.obs;
+  final phone    = ''.obs;
+  final rollNo   = ''.obs;
 
   final loading = false.obs;
   final obscure = true.obs;
@@ -33,34 +37,61 @@ class SignupControllerX extends GetxController {
     return null;
   }
 
-  Future<void> signup() async {
-    final nameVal = name.value.trim();
-    final emailVal = email.value.trim();
-    final passVal = password.value;
+  String? validatePhone(String? v) {
+    if (v == null || v.trim().isEmpty) return 'Enter phone number';
+    return null;
+  }
 
-    if (validateName(nameVal) != null ||
-        validateEmail(emailVal) != null ||
-        validatePassword(passVal) != null) {
-      Get.snackbar("Error", "Enter valid name, email, and password");
+  String? validateRollNo(String? v) {
+    if (v == null || v.trim().isEmpty) return 'Enter roll number';
+    return null;
+  }
+
+  Future<void> signup() async {
+    final nameVal  = name.value.trim();
+    final emailVal = email.value.trim();
+    final passVal  = password.value;
+    final phoneVal = phone.value.trim();
+    final rollVal  = rollNo.value.trim();
+
+    if (validateName(nameVal) != null) {
+      AppSnackbar.warning('Please enter your full name.');
+      return;
+    }
+    if (validateEmail(emailVal) != null) {
+      AppSnackbar.warning('Please enter a valid email address.');
+      return;
+    }
+    if (validatePhone(phoneVal) != null) {
+      AppSnackbar.warning('Please enter your phone number.');
+      return;
+    }
+    if (validateRollNo(rollVal) != null) {
+      AppSnackbar.warning('Please enter your roll number.');
+      return;
+    }
+    if (validatePassword(passVal) != null) {
+      AppSnackbar.warning('Password must be at least 6 characters.');
       return;
     }
 
     try {
       loading.value = true;
       await _repo.signup(
-        name: nameVal,
-        email: emailVal,
+        name:     nameVal,
+        email:    emailVal,
         password: passVal,
+        phone:    phoneVal,
+        rollNo:   rollVal,
       );
+      AppSnackbar.success('Account created successfully! Welcome 🎉');
       Get.offAllNamed(Routes.home);
     } catch (e) {
-      Get.snackbar('Signup Failed', e.toString());
+      AppSnackbar.error(AppSnackbar.friendlyFirebaseError(e));
     } finally {
       loading.value = false;
     }
   }
 
-  void togglePassword() {
-    obscure.value = !obscure.value;
-  }
+  void togglePassword() => obscure.value = !obscure.value;
 }

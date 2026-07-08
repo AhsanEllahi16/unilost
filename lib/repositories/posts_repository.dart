@@ -1,3 +1,4 @@
+// lib/repositories/posts_repository.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/post_model.dart';
 
@@ -16,8 +17,12 @@ class PostsRepository {
     );
   }
 
-  Future<void> addPost(PostModel post) async {
-    await _db.collection('posts').add(post.toFirestore());
+  // ✅ Now returns document ID for matching service
+  Future<String> addPost(PostModel post) async {
+    final doc = await _db
+        .collection('posts')
+        .add(post.toFirestore());
+    return doc.id;
   }
 
   Future<void> updatePost({
@@ -28,10 +33,10 @@ class PostsRepository {
     required String image,
   }) async {
     await _db.collection('posts').doc(id).update({
-      'title': title,
+      'title':       title,
       'description': description,
-      'location': location,
-      'image': image,
+      'location':    location,
+      'image':       image,
     });
   }
 

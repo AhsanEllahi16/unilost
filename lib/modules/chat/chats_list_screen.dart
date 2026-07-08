@@ -1,11 +1,11 @@
 // lib/modules/chat/chats_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../theme.dart';
 import '../../viewmodels/chat_controller.dart';
 import '../../routes/app_routes.dart';
-import '../../models/chat_model.dart';
 
 class ChatsListScreen extends StatelessWidget {
   const ChatsListScreen({super.key});
@@ -13,6 +13,9 @@ class ChatsListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ChatController chatC = Get.find<ChatController>();
+    // ✅ Get current user uid to filter out from participants
+    final String myUid =
+        FirebaseAuth.instance.currentUser?.uid ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -20,11 +23,33 @@ class ChatsListScreen extends StatelessWidget {
         backgroundColor: UniLostTheme.primary,
       ),
       body: Obx(() {
-        final List<ChatModel> chats = chatC.chats;
+        final chats = chatC.chats;
 
         if (chats.isEmpty) {
           return const Center(
-            child: Text('No chats yet. Start a conversation from an item.'),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.chat_bubble_outline,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'No chats yet.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Start a conversation from any item.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
           );
         }
 
@@ -35,35 +60,62 @@ class ChatsListScreen extends StatelessWidget {
           itemBuilder: (context, index) {
             final chat = chats[index];
 
+            final String chatId      = chat['id'] ?? '';
+            final String itemTitle   = chat['itemTitle'] ?? 'Chat';
+            final String lastMessage = chat['lastMessage'] ?? '';
+
+            // ✅ Find the OTHER participant — not current user
+            final List participants =
+                chat['participants'] as List? ?? [];
+            final String otherUid = participants.firstWhere(
+                  (uid) => uid != myUid,
+              orElse: () => '',
+            );
+
             return ListTile(
               leading: CircleAvatar(
-                backgroundColor:
-                chat.unread ? Colors.redAccent : Colors.grey,
-                child: const Icon(Icons.chat_bubble_outline,
-                    color: Colors.white),
-              ),
-              title: Text(chat.title),
-              subtitle: Text('with ${chat.postedBy}'),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    chat.createdAt.toString().split('.').first,
-                    style: const TextStyle(fontSize: 11),
+                backgroundColor: UniLostTheme.primary,
+                child: Text(
+                  itemTitle.isNotEmpty
+                      ? itemTitle[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
-                  if (chat.unread)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Icon(Icons.circle, size: 10, color: Colors.red),
-                    ),
-                ],
+                ),
+              ),
+              title: Text(
+                itemTitle,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                lastMessage.isEmpty
+                    ? 'No messages yet'
+                    : lastMessage,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withOpacity(0.6),
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: Colors.grey,
               ),
               onTap: () {
-                chatC.markRead(chat.id);
+                // ✅ Correctly passes other user's uid
                 Get.toNamed(
                   Routes.chat,
-                  arguments: {'chatWith': chat.postedBy},
+                  arguments: {
+                    'chatWith': itemTitle,
+                    'uid': otherUid,
+                  },
                 );
               },
             );

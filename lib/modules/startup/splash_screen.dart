@@ -1,5 +1,6 @@
 // lib/modules/startup/splash_screen.dart
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -38,9 +39,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // 👇 OLD behavior, but now using GetX route instead of string "/welcome"
+    // ✅ Check auth state — skip welcome if already logged in
     Timer(const Duration(seconds: 3), () {
-      Get.offAllNamed(Routes.welcome);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Already logged in — go straight to home
+        Get.offAllNamed(Routes.home);
+      } else {
+        // Not logged in — show welcome screen
+        Get.offAllNamed(Routes.welcome);
+      }
     });
   }
 
@@ -57,14 +65,13 @@ class _SplashScreenState extends State<SplashScreen>
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
-          // child is the *same* UI you had before
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Image.asset('assets/logo.jpeg', height: 140),
               const SizedBox(height: 20),
               const Text(
-                "COMSATS Lost & Found",
+                'COMSATS Lost & Found',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,

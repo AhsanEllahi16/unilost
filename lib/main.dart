@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,26 +11,24 @@ import 'routes/app_pages.dart';
 import 'routes/app_routes.dart';
 import 'bindings/initial_binding.dart';
 import 'theme.dart';
+import 'theme_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Make uncaught Flutter errors visible on screen and printed
+  // ✅ Load persisted theme BEFORE runApp
+  await ThemeManager.init();
+
   FlutterError.onError = (details) {
     FlutterError.dumpErrorToConsole(details);
-    if (kDebugMode) {
-      // Keep default red error screen in debug mode
-    }
   };
 
-  // Catch async errors (useful on web)
   PlatformDispatcher.instance.onError = (error, stack) {
     // ignore: avoid_print
     print('PlatformDispatcher.onError: $error\n$stack');
-    return true; // we handled it
+    return true;
   };
 
-  // Try to initialize Firebase but don't crash the whole app if it fails.
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -39,7 +38,6 @@ Future<void> main() async {
   } catch (e, s) {
     // ignore: avoid_print
     print('Firebase init failed: $e\n$s');
-    // Continue in demo mode
   }
 
   runApp(const UniLostApp());
@@ -50,7 +48,6 @@ class UniLostApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Custom ErrorWidget: visible red error box when a build throws
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return Material(
         color: Colors.white,
@@ -78,34 +75,33 @@ class UniLostApp extends StatelessWidget {
       );
     };
 
-    return GetMaterialApp(
-      title: 'UniLost',
-      debugShowCheckedModeBanner: false,
+    // ✅ ValueListenableBuilder rebuilds app when theme changes
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeManager.themeMode,
+      builder: (_, mode, __) {
+        return GetMaterialApp(
+          title: 'UniLost',
+          debugShowCheckedModeBanner: false,
 
-      // 🔹 All controllers are created here (ThemeController, SettingsController, PostsController, ChatController)
-      initialBinding: InitialBinding(),
+          initialBinding: InitialBinding(),
+          getPages: AppPages.pages,
+          initialRoute: Routes.splash,
 
-      // 🔹 Central routes
-      getPages: AppPages.pages,
-      initialRoute: Routes.splash, // you can change to Routes.welcome or Routes.auth later if needed
+          // ✅ Now uses persisted and reactive theme
+          theme: UniLostTheme.light(),
+          darkTheme: UniLostTheme.dark(),
+          themeMode: mode,
 
-      // 🔹 App theme
-      theme: UniLostTheme.light(),
-      darkTheme: UniLostTheme.dark(),
-      themeMode: ThemeMode.system,
+          unknownRoute: GetPage(
+            name: '/notfound',
+            page: () => const Scaffold(
+              body: Center(child: Text('Route not found')),
+            ),
+          ),
 
-      // Fallback route
-      unknownRoute: GetPage(
-        name: '/notfound',
-        page: () => const Scaffold(
-          body: Center(child: Text('Route not found')),
-        ),
-      ),
-
-      // You can wrap here with other widgets if needed later (e.g., ScreenUtil, Toast overlay, etc.)
-      builder: (context, child) {
-        return GestureDetector(
-          child: child,
+          builder: (context, child) {
+            return GestureDetector(child: child);
+          },
         );
       },
     );

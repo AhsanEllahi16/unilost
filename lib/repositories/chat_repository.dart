@@ -1,57 +1,86 @@
-import 'dart:math';
-import 'package:get/get.dart';
-
-import '../models/chat_model.dart';
+// lib/repositories/chat_repository.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChatRepository {
-  final RxList<ChatModel> _chats = <ChatModel>[].obs;
+  final _db = FirebaseFirestore.instance;
 
-  List<ChatModel> get chats => _chats.reversed.toList();
-
-  int get unreadCount =>
-      _chats.where((c) => c.unread == true).length;
-
-  void addChat({
-    required Map<String, dynamic> item,
-    String? title,
-    String? postedBy,
-  }) {
-    final id =
-        DateTime.now().millisecondsSinceEpoch.toString() +
-            Random().nextInt(999).toString();
-
-    _chats.add(
-      ChatModel(
-        id: id,
-        title: title ?? 'Chat about ${item['title'] ?? 'item'}',
-        postedBy: postedBy ?? item['postedByName'] ?? 'User',
-        unread: true,
-        createdAt: DateTime.now(),
-        item: item,
-      ),
-    );
+  /// Generates a deterministic chat ID from two UIDs.
+  /// Sorting ensures uid1_uid2 and uid2_uid1 produce the same ID.
+  String chatId(String myUid, String otherUid) {
+    final ids = [myUid, otherUid]..sort();
+    return ids.join('_');
   }
 
-  void markRead(String id) {
-    final index = _chats.indexWhere((c) => c.id == id);
-    if (index != -1 && _chats[index].unread) {
-      _chats[index] = _chats[index].copyWith(unread: false);
-    }
+  /// Real-time stream of messages for a conversation
+  Stream<List<Map<String, dynamic>>> streamMessages(String chatId) {
+    return _db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) {
+      final data = d.data();
+      // ✅ Convert Firestore Timestamp → DateTime for UI
+      final ts = data['createdAt'];
+      return {
+        ...data,
+        'createdAt':
+        ts is Timestamp ? ts.toDate() : DateTime.now(),
+      };
+    }).toList());
   }
 
-  void markAllRead() {
-    for (int i = 0; i < _chats.length; i++) {
-      if (_chats[i].unread) {
-        _chats[i] = _chats[i].copyWith(unread: false);
-      }
-    }
+  /// Send a message and update chat metadata
+  Future<void> sendMessage({
+    required String chatId,
+    required String fromUid,
+    required String fromName,
+    required String text,
+  }) async {
+    // ✅ Add message to subcollection
+    await _db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .add({
+      'from': fromUid,
+      'fromName': fromName,
+      'text': text,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    // ✅ Update chat metadata for ChatsListScreen
+    await _db.collection('chats').doc(chatId).set({
+      'lastMessage': text,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
-  void removeChat(String id) {
-    _chats.removeWhere((c) => c.id == id);
+  /// Stream all chats where this user is a participant
+  Stream<List<Map<String, dynamic>>> streamUserChats(String uid) {
+    return _db
+        .collection('chats')
+        .where('participants', arrayContains: uid)
+        .orderBy('lastMessageAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+        .map((d) => {'id': d.id, ...d.data()})
+        .toList());
   }
 
-  void clear() {
-    _chats.clear();
+  /// Called when a chat is initiated from ItemDetailScreen
+  Future<void> createChat({
+    required String chatId,
+    required String myUid,
+    required String otherUid,
+    required String itemTitle,
+  }) async {
+    await _db.collection('chats').doc(chatId).set({
+      'participants': [myUid, otherUid],
+      'itemTitle': itemTitle,
+      'lastMessage': '',
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }

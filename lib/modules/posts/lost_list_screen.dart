@@ -1,47 +1,37 @@
+// lib/modules/posts/lost_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../theme.dart';
 import '../../widgets/item_card.dart';
+import '../../widgets/main_app_bar.dart';
+import '../../widgets/main_bottom_nav.dart';
 import '../../viewmodels/posts_controller.dart';
-import '../../routes/app_routes.dart';
 import '../../models/post_model.dart';
 import '../posts/item_detail_screen.dart';
 import '../posts/post_item_screen.dart';
 
-class LostListScreen extends StatefulWidget {
+class LostListScreen extends StatelessWidget {
   const LostListScreen({super.key});
 
   @override
-  State<LostListScreen> createState() => _LostListScreenState();
-}
-
-class _LostListScreenState extends State<LostListScreen> {
-  final PostsController postsC = Get.find<PostsController>();
-
-  int _currentIndex = 1;
-
-  void _openDetail(PostModel post) {
-    Get.to(() => ItemDetailScreen(post: post));
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final PostsController postsC = Get.find<PostsController>();
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Lost Items'),
-        backgroundColor: UniLostTheme.primary,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Get.offAllNamed(Routes.home),
-        ),
-      ),
+      // ✅ Shared AppBar with search, chat, notification icons
+      appBar: const MainAppBar(title: 'Lost Items'),
 
       body: Obx(() {
         final posts = postsC.lostPosts();
 
         if (posts.isEmpty) {
-          return const Center(child: Text('No lost items'));
+          return const Center(
+            child: Text(
+              'No lost items yet.',
+              style: TextStyle(fontSize: 15),
+            ),
+          );
         }
 
         return ListView.separated(
@@ -52,7 +42,7 @@ class _LostListScreenState extends State<LostListScreen> {
             final post = posts[i];
             return ItemCard(
               post: post,
-              onTap: () => _openDetail(post),
+              onTap: () => Get.to(() => ItemDetailScreen(post: post)),
             );
           },
         );
@@ -60,30 +50,14 @@ class _LostListScreenState extends State<LostListScreen> {
 
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: UniLostTheme.primary,
+        foregroundColor: Colors.white,
         onPressed: () => Get.to(() => const PostItemScreen()),
         icon: const Icon(Icons.add),
         label: const Text('Report Lost'),
       ),
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: UniLostTheme.primary,
-        unselectedItemColor: Colors.grey,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        onTap: (index) {
-          if (index == 0) Get.offAllNamed(Routes.home);
-          if (index == 2) Get.offAllNamed(Routes.found);
-          if (index == 3) Get.offAllNamed(Routes.profile);
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Lost'),
-          BottomNavigationBarItem(icon: Icon(Icons.check_circle), label: 'Found'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
+      // ✅ Shared bottom nav
+      bottomNavigationBar: const MainBottomNav(currentIndex: 1),
     );
   }
 }

@@ -1,3 +1,4 @@
+// lib/routes/app_pages.dart
 import 'package:get/get.dart';
 
 import 'app_routes.dart';
@@ -42,14 +43,15 @@ class AppPages {
   AppPages._();
 
   static final pages = <GetPage>[
+
     // STARTUP
     GetPage(
       name: Routes.splash,
-      page: () => SplashScreen(),
+      page: () => const SplashScreen(),
     ),
     GetPage(
       name: Routes.welcome,
-      page: () => WelcomeScreen(),
+      page: () => const WelcomeScreen(),
     ),
 
     // AUTH
@@ -69,14 +71,16 @@ class AppPages {
       binding: ForgotBinding(),
     ),
 
-    // HOME + POSTS
+    // HOME
     GetPage(
       name: Routes.home,
-      page: () => HomeScreen(),
+      page: () => const HomeScreen(),
     ),
+
+    // POSTS
     GetPage(
       name: Routes.post,
-      page: () => PostItemScreen(),
+      page: () => const PostItemScreen(),
     ),
     GetPage(
       name: Routes.myPosts,
@@ -84,24 +88,20 @@ class AppPages {
     ),
     GetPage(
       name: Routes.lost,
-      page: () => LostListScreen(),
+      page: () => const LostListScreen(),
     ),
     GetPage(
       name: Routes.found,
-      page: () => FoundListScreen(),
+      page: () => const FoundListScreen(),
     ),
-
     GetPage(
       name: Routes.detail,
-      page: () {
-        final PostModel post = Get.arguments as PostModel;
-        return ItemDetailScreen(post: post);
-      },
+      // ✅ Safe null cast — ItemDetailScreen handles null gracefully
+      page: () => ItemDetailScreen(post: Get.arguments as PostModel?),
     ),
-
     GetPage(
       name: Routes.search,
-      page: () => SearchScreen(),
+      page: () => const SearchScreen(),
     ),
 
     // PROFILE + SETTINGS
@@ -111,29 +111,30 @@ class AppPages {
     ),
     GetPage(
       name: Routes.editProfile,
-      page: () => EditProfileScreen(),
+      page: () => const EditProfileScreen(),
     ),
     GetPage(
       name: Routes.notifications,
-      page: () => NotificationsScreen(),
+      page: () => const NotificationsScreen(),
     ),
     GetPage(
       name: Routes.settings,
-      page: () => SettingsScreen(),
+      page: () => const SettingsScreen(),
     ),
 
     // CHAT
     GetPage(
       name: Routes.chatsList,
-      page: () => ChatsListScreen(),
+      page: () => const ChatsListScreen(),
     ),
-
     GetPage(
       name: Routes.chat,
       page: () {
         final args = Get.arguments as Map<String, dynamic>;
         return ChatScreen(
-          chatWith: args['chatWith'] ?? 'User',
+          chatWith:    args['chatWith'] ?? 'User',
+          // ✅ Now correctly passes uid for Firestore chat ID generation
+          chatWithUid: args['uid'] ?? '',
         );
       },
     ),

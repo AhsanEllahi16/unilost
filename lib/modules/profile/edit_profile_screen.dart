@@ -1,3 +1,4 @@
+// lib/modules/profile/edit_profile_screen.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -12,8 +13,10 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
+  final _formKey   = GlobalKey<FormState>();
+  final _nameCtrl  = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _rollCtrl  = TextEditingController();
 
   late ProfileController c;
 
@@ -21,18 +24,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     c = Get.find<ProfileController>();
-    _nameCtrl.text = c.profile.value?.name ?? '';
+
+    // ✅ Prefill if profile already loaded
+    _prefill();
+
+    // ✅ Also prefill if profile loads AFTER screen opens
+    ever(c.profile, (_) => _prefill());
+  }
+
+  void _prefill() {
+    final p = c.profile.value;
+    if (p == null) return;
+    if (_nameCtrl.text.isEmpty)  _nameCtrl.text  = p.name;
+    if (_phoneCtrl.text.isEmpty) _phoneCtrl.text = p.phone  ?? '';
+    if (_rollCtrl.text.isEmpty)  _rollCtrl.text  = p.rollNo ?? '';
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _rollCtrl.dispose();
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    c.updateName(_nameCtrl.text);
+
+    await c.updateProfile(
+      name:   _nameCtrl.text.trim(),
+      phone:  _phoneCtrl.text.trim(),
+      rollNo: _rollCtrl.text.trim(),
+    );
+
+    Get.back();
+    Get.snackbar(
+      'Saved',
+      'Profile updated successfully',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   @override
@@ -48,21 +78,65 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           key: _formKey,
           child: Column(
             children: [
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (v) =>
-                v == null || v.trim().isEmpty ? 'Enter name' : null,
+
+              // AVATAR placeholder
+              const CircleAvatar(
+                radius: 40,
+                child: Icon(Icons.person, size: 44),
               ),
               const SizedBox(height: 24),
+
+              // NAME
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+                validator: (v) =>
+                v == null || v.trim().isEmpty ? 'Enter your name' : null,
+              ),
+              const SizedBox(height: 14),
+
+              // ✅ PHONE — new field
+              TextFormField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // ✅ ROLL NO — new field
+              TextFormField(
+                controller: _rollCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Roll Number',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                ),
+              ),
+              const SizedBox(height: 28),
+
+              // SAVE BUTTON
               Obx(() {
                 return SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: c.loading.value ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UniLostTheme.primary,
+                      minimumSize: const Size.fromHeight(50),
+                    ),
                     child: c.loading.value
-                        ? const CircularProgressIndicator()
-                        : const Text('Save'),
+                        ? const CircularProgressIndicator(
+                      color: Colors.white,
+                    )
+                        : const Text(
+                      'Save Changes',
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
                 );
               }),

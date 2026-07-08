@@ -1,3 +1,4 @@
+// lib/modules/auth/signup/signup_view.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -20,10 +21,15 @@ class SignupView extends StatelessWidget {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 18,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+
+              // LOGO
               Center(
                 child: Image.asset(
                   'assets/logo.jpeg',
@@ -32,7 +38,7 @@ class SignupView extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // NAME - no Obx needed, we only write to Rx
+              // FULL NAME
               TextFormField(
                 onChanged: (v) => c.name.value = v,
                 decoration: const InputDecoration(
@@ -42,7 +48,7 @@ class SignupView extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // EMAIL - no Obx needed, we only write to Rx
+              // EMAIL
               TextFormField(
                 onChanged: (v) => c.email.value = v,
                 decoration: const InputDecoration(
@@ -53,7 +59,30 @@ class SignupView extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // PASSWORD - Obx is correct here (reads c.obscure.value)
+              // ✅ PHONE — new field
+              TextFormField(
+                onChanged: (v) => c.phone.value = v,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  hintText: 'e.g. +92 300 0000000',
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+
+              // ✅ ROLL NUMBER — new field
+              TextFormField(
+                onChanged: (v) => c.rollNo.value = v,
+                decoration: const InputDecoration(
+                  labelText: 'Roll Number',
+                  prefixIcon: Icon(Icons.badge_outlined),
+                  hintText: 'e.g. FA21-BCE-001',
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // PASSWORD
               Obx(
                     () => TextFormField(
                   onChanged: (v) => c.password.value = v,
@@ -72,10 +101,9 @@ class SignupView extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 24),
 
-              const SizedBox(height: 20),
-
-              // SIGNUP BUTTON - Obx is correct (reads c.loading.value)
+              // SIGNUP BUTTON
               Obx(
                     () => c.loading.value
                     ? const Center(child: CircularProgressIndicator())
@@ -89,6 +117,8 @@ class SignupView extends StatelessWidget {
               ),
 
               const SizedBox(height: 16),
+
+              // LOGIN LINK
               TextButton(
                 onPressed: () => Get.offAllNamed(Routes.auth),
                 child: const Text('Already have an account? Login'),

@@ -1,0 +1,354 @@
+// lib/services/matching_service.dart
+import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+class MatchingService {
+  // ✅ Free Groq API key — no credit card needed
+  static const String _apiKey = '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';
+  static const double _threshold = 0.70;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // ── Main matching function ──
+  static Future<MatchResult?> findMatches(
+      Map<String, dynamic> newPost,
+      String newPostId,
+      ) async {
+    try {
+      debugPrint('🔍 AI Matching started for: ${newPost['title']}');
+
+      final String oppositeCategory =
+      newPost['category'] == 'lost' ? 'found' : 'lost';
+
+      final snapshot = await _db
+          .collection('posts')
+          .where('category', isEqualTo: oppositeCategory)
+          .orderBy('createdAt', descending: true)
+          .limit(20)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        debugPrint('No $oppositeCategory posts found');
+        return null;
+      }
+
+      debugPrint(
+          'Comparing with ${snapshot.docs.length} '
+              '$oppositeCategory posts...'
+      );
+
+      double bestScore              = 0.0;
+      String bestMatchId            = '';
+      String bestReason             = '';
+      Map<String, dynamic>? bestMatchPost;
+
+      for (final doc in snapshot.docs) {
+        final oppositePost   = doc.data();
+        final oppositePostId = doc.id;
+
+        if (oppositePost['postedByUid'] == newPost['postedByUid']) {
+          continue;
+        }
+
+        final alreadyMatched = await _checkAlreadyMatched(
+          newPostId, oppositePostId,
+        );
+        if (alreadyMatched) continue;
+
+        final result = await _compareWithGroq(newPost, oppositePost);
+
+        debugPrint(
+            'Score with $oppositePostId: ${result['confidence']}'
+        );
+
+        if ((result['confidence'] as double) > bestScore) {
+          bestScore     = result['confidence'] as double;
+          bestMatchId   = oppositePostId;
+          bestReason    = result['reason'] as String;
+          bestMatchPost = oppositePost;
+        }
+      }
+
+      if (bestMatchPost != null && bestScore >= _threshold) {
+        debugPrint('✅ Match found! Score: $bestScore');
+        await _handleMatch(
+          newPost,       newPostId,
+          bestMatchPost, bestMatchId,
+          bestScore,     bestReason,
+        );
+        return MatchResult(
+          isMatch:       true,
+          confidence:    bestScore,
+          reason:        bestReason,
+          matchedPost:   bestMatchPost,
+          matchedPostId: bestMatchId,
+        );
+      } else {
+        debugPrint('❌ No match found. Best score: $bestScore');
+        return MatchResult(
+          isMatch:       false,
+          confidence:    bestScore,
+          reason:        'No matching item found yet.',
+          matchedPost:   null,
+          matchedPostId: '',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error in findMatches: $e');
+      return null;
+    }
+  }
+
+  // ── Call Groq AI (free) to compare two items ──
+  static Future<Map<String, dynamic>> _compareWithGroq(
+      Map<String, dynamic> post1,
+      Map<String, dynamic> post2,
+      ) async {
+    try {
+      final prompt = '''
+You are a lost and found item matching assistant 
+for COMSATS University app.
+
+Compare these two items and determine if they 
+could be the same item:
+
+ITEM 1 (${(post1['category'] as String).toUpperCase()}):
+- Title: ${post1['title']}
+- Description: ${post1['description']}
+- Location: ${post1['location']}
+
+ITEM 2 (${(post2['category'] as String).toUpperCase()}):
+- Title: ${post2['title']}
+- Description: ${post2['description']}
+- Location: ${post2['location']}
+
+Consider:
+1. Are these the same type of item?
+2. Do descriptions suggest same item?
+3. Are locations same or nearby campus areas?
+4. Could this be same item reported as lost and found?
+
+Reply ONLY in this exact JSON format, nothing else:
+{
+  "match": true or false,
+  "confidence": 0.0 to 1.0,
+  "reason": "one sentence explanation"
+}''';
+
+      final response = await http.post(
+        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $_apiKey',
+          'Content-Type':  'application/json',
+        },
+        body: jsonEncode({
+          'model': 'llama-3.3-70b-versatile',
+          'messages': [
+            {
+              'role':    'user',
+              'content': prompt,
+            }
+          ],
+          'temperature': 0.1,
+          'max_tokens':  200,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data    = jsonDecode(response.body);
+        final text    = data['choices'][0]['message']['content'] as String;
+        final cleaned = text
+            .replaceAll('```json', '')
+            .replaceAll('```', '')
+            .trim();
+
+        final parsed = jsonDecode(cleaned);
+        return {
+          'match':      parsed['match']      ?? false,
+          'confidence': (parsed['confidence'] as num).toDouble(),
+          'reason':     parsed['reason']     ?? 'No reason',
+        };
+      } else {
+        debugPrint('Groq API error: ${response.body}');
+        return {
+          'match':      false,
+          'confidence': 0.0,
+          'reason':     'API error',
+        };
+      }
+    } catch (e) {
+      debugPrint('Groq API error: $e');
+      return {
+        'match':      false,
+        'confidence': 0.0,
+        'reason':     'Error occurred',
+      };
+    }
+  }
+
+  // ── Handle match found ──
+  static Future<void> _handleMatch(
+      Map<String, dynamic> post1,   String post1Id,
+      Map<String, dynamic> post2,   String post2Id,
+      double score,                 String reason,
+      ) async {
+    try {
+      final bool isPost1Lost  = post1['category'] == 'lost';
+      final lostPost          = isPost1Lost ? post1  : post2;
+      final foundPost         = isPost1Lost ? post2  : post1;
+      final String lostId     = isPost1Lost ? post1Id : post2Id;
+      final String foundId    = isPost1Lost ? post2Id : post1Id;
+
+      // 1. Save match record
+      final matchRef = await _db.collection('matches').add({
+        'lostPostId':   lostId,
+        'foundPostId':  foundId,
+        'lostUserUid':  lostPost['postedByUid'],
+        'foundUserUid': foundPost['postedByUid'],
+        'confidence':   score,
+        'reason':       reason,
+        'status':       'pending',
+        'createdAt':    FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('Match saved: ${matchRef.id}');
+
+      // 2. Create chat
+      final List<String> uids = [
+        lostPost['postedByUid']  as String,
+        foundPost['postedByUid'] as String,
+      ]..sort();
+      final String chatId = uids.join('_');
+
+      await _db.collection('chats').doc(chatId).set({
+        'participants':  uids,
+        'itemTitle':     lostPost['title'],
+        'matchId':       matchRef.id,
+        'lostPostId':    lostId,
+        'foundPostId':   foundId,
+        'confidence':    score,
+        'lastMessage':   '🎉 AI found a possible match!',
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'createdAt':     FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Add AI system message
+      await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .add({
+        'from':      'system',
+        'fromName':  'UniLost AI',
+        'text':
+        '🎉 AI Match Found! '
+            '(${(score * 100).round()}% confidence)\n'
+            'Reason: $reason\n'
+            'Chat now to verify and arrange return!',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('Chat created: $chatId');
+
+      // 3. Notification for lost item owner
+      await _db
+          .collection('notifications')
+          .doc(lostPost['postedByUid'] as String)
+          .collection('items')
+          .add({
+        'title':     '🎉 Match Found for Your Lost Item!',
+        'body':
+        'We found a possible match for your '
+            '${lostPost['title']}. '
+            'Confidence: ${(score * 100).round()}%',
+        'type':      'match',
+        'matchId':   matchRef.id,
+        'chatId':    chatId,
+        'read':      false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // 4. Notification for found item owner
+      await _db
+          .collection('notifications')
+          .doc(foundPost['postedByUid'] as String)
+          .collection('items')
+          .add({
+        'title':     '🎉 Owner Found for Item You Reported!',
+        'body':
+        'We found the possible owner of '
+            '${foundPost['title']}. '
+            'Confidence: ${(score * 100).round()}%',
+        'type':      'match',
+        'matchId':   matchRef.id,
+        'chatId':    chatId,
+        'read':      false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('Notifications saved!');
+
+      // 5. Update match count on both profiles
+      await _db
+          .collection('profiles')
+          .doc(lostPost['postedByUid'] as String)
+          .set(
+        {'matchCount': FieldValue.increment(1)},
+        SetOptions(merge: true),
+      );
+
+      await _db
+          .collection('profiles')
+          .doc(foundPost['postedByUid'] as String)
+          .set(
+        {'matchCount': FieldValue.increment(1)},
+        SetOptions(merge: true),
+      );
+
+      debugPrint('✅ Match handling complete!');
+    } catch (e) {
+      debugPrint('Error handling match: $e');
+    }
+  }
+
+  // ── Check already matched ──
+  static Future<bool> _checkAlreadyMatched(
+      String postId1,
+      String postId2,
+      ) async {
+    try {
+      final existing = await _db
+          .collection('matches')
+          .where('lostPostId', whereIn: [postId1, postId2])
+          .get();
+
+      return existing.docs.any((doc) {
+        final data = doc.data();
+        return (data['lostPostId']  == postId1 &&
+            data['foundPostId'] == postId2) ||
+            (data['lostPostId']  == postId2 &&
+                data['foundPostId'] == postId1);
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+// ── Match Result Model ──
+class MatchResult {
+  final bool isMatch;
+  final double confidence;
+  final String reason;
+  final Map<String, dynamic>? matchedPost;
+  final String matchedPostId;
+
+  MatchResult({
+    required this.isMatch,
+    required this.confidence,
+    required this.reason,
+    required this.matchedPost,
+    required this.matchedPostId,
+  });
+}

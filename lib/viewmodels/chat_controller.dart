@@ -1,42 +1,70 @@
+// lib/viewmodels/chat_controller.dart
+import 'dart:async';
 import 'package:get/get.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 import '../repositories/chat_repository.dart';
-import '../models/chat_model.dart';
 
 class ChatController extends GetxController {
   final ChatRepository _repo;
 
   ChatController(this._repo);
 
-  List<ChatModel> get chats => _repo.chats;
+  final chats      = <Map<String, dynamic>>[].obs;
+  final unreadCount = 0.obs;
 
-  int get unreadCount => _repo.unreadCount;
+  StreamSubscription? _sub;
 
-  void addChat({
-    required Map<String, dynamic> item,
-    String? title,
-    String? postedBy,
-  }) {
-    _repo.addChat(
-      item: item,
-      title: title,
-      postedBy: postedBy,
+  @override
+  void onInit() {
+    super.onInit();
+    // ✅ Listen to auth state — reload chats when user logs in
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        _loadChats(user.uid);
+      } else {
+        chats.clear();
+        _sub?.cancel();
+      }
+    });
+  }
+
+  void _loadChats(String uid) {
+    _sub?.cancel();
+    _sub = _repo.streamUserChats(uid).listen(
+          (list) {
+        chats.assignAll(list);
+      },
+      onError: (e) {
+        // Silent fail
+      },
     );
   }
 
-  void markRead(String id) {
-    _repo.markRead(id);
+  @override
+  void onClose() {
+    _sub?.cancel();
+    super.onClose();
   }
 
-  void markAllRead() {
-    _repo.markAllRead();
+  Future<void> startChat({
+    required String otherUid,
+    required String itemTitle,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final chatId = _repo.chatId(user.uid, otherUid);
+    await _repo.createChat(
+      chatId:    chatId,
+      myUid:     user.uid,
+      otherUid:  otherUid,
+      itemTitle: itemTitle,
+    );
   }
 
-  void removeChat(String id) {
-    _repo.removeChat(id);
-  }
-
-  void clear() {
-    _repo.clear();
+  String getChatId(String otherUid) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return '';
+    return _repo.chatId(user.uid, otherUid);
   }
 }
