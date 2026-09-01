@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class MatchingService {
-  // ✅ Free Groq API key — no credit card needed
-  static const String _apiKey = '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';
-  static const double _threshold = 0.70;
+  // Key is injected at build/run time via --dart-define, never hardcoded here.
+  static const String _apiKey = String.fromEnvironment('GROQ_API_KEY');
+  static const double _threshold = 0.75; // matches SDD AI Matching Algorithm
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ── Main matching function ──
@@ -16,6 +16,14 @@ class MatchingService {
       String newPostId,
       ) async {
     try {
+      if (_apiKey.isEmpty) {
+        debugPrint(
+          '❌ GROQ_API_KEY not set. Run with '
+              '--dart-define-from-file=dart_define.json',
+        );
+        return null;
+      }
+
       debugPrint('🔍 AI Matching started for: ${newPost['title']}');
 
       final String oppositeCategory =
@@ -100,7 +108,7 @@ class MatchingService {
     }
   }
 
-  // ── Call Groq AI (free) to compare two items ──
+  // ── Call Groq AI to compare two items ──
   static Future<Map<String, dynamic>> _compareWithGroq(
       Map<String, dynamic> post1,
       Map<String, dynamic> post2,
@@ -143,7 +151,7 @@ Reply ONLY in this exact JSON format, nothing else:
           'Content-Type':  'application/json',
         },
         body: jsonEncode({
-          'model': 'llama-3.3-70b-versatile',
+          'model': 'openai/gpt-oss-120b',
           'messages': [
             {
               'role':    'user',
@@ -200,7 +208,6 @@ Reply ONLY in this exact JSON format, nothing else:
       final String lostId     = isPost1Lost ? post1Id : post2Id;
       final String foundId    = isPost1Lost ? post2Id : post1Id;
 
-      // 1. Save match record
       final matchRef = await _db.collection('matches').add({
         'lostPostId':   lostId,
         'foundPostId':  foundId,
@@ -214,7 +221,6 @@ Reply ONLY in this exact JSON format, nothing else:
 
       debugPrint('Match saved: ${matchRef.id}');
 
-      // 2. Create chat
       final List<String> uids = [
         lostPost['postedByUid']  as String,
         foundPost['postedByUid'] as String,
@@ -233,7 +239,6 @@ Reply ONLY in this exact JSON format, nothing else:
         'createdAt':     FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Add AI system message
       await _db
           .collection('chats')
           .doc(chatId)
@@ -251,7 +256,6 @@ Reply ONLY in this exact JSON format, nothing else:
 
       debugPrint('Chat created: $chatId');
 
-      // 3. Notification for lost item owner
       await _db
           .collection('notifications')
           .doc(lostPost['postedByUid'] as String)
@@ -269,7 +273,6 @@ Reply ONLY in this exact JSON format, nothing else:
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 4. Notification for found item owner
       await _db
           .collection('notifications')
           .doc(foundPost['postedByUid'] as String)
@@ -289,7 +292,6 @@ Reply ONLY in this exact JSON format, nothing else:
 
       debugPrint('Notifications saved!');
 
-      // 5. Update match count on both profiles
       await _db
           .collection('profiles')
           .doc(lostPost['postedByUid'] as String)

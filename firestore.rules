@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // A write to profiles/{uid} that touches ONLY the matchCount field.
+    // Needed because AI matching currently runs client-side (not yet a
+    // Cloud Function), so the OTHER matched student's client is the one
+    // incrementing this profile's matchCount. Every other profile field
+    // stays owner-only.
+    function isMatchCountOnlyUpdate() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['matchCount']);
+    }
+
+    // profiles/{uid}
+    match /profiles/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isMatchCountOnlyUpdate();
+      allow delete: if false;
+    }
+
+    // posts/{postId}
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && request.resource.data.postedByUid == request.auth.uid;
+      allow update, delete: if isSignedIn()
+                    && resource.data.postedByUid == request.auth.uid;
+    }
+
+    // matches/{matchId} — written only by matching logic run as the
+    // authenticated poster; both participants may read
+    match /matches/{matchId} {
+      allow read: if isSignedIn()
+                  && (resource.data.lostUserUid == request.auth.uid
+                      || resource.data.foundUserUid == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // chats/{chatId} and its messages subcollection
+    match /chats/{chatId} {
+      allow read, write: if isSignedIn()
+                  && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn()
+                  && request.auth.uid in request.resource.data.participants;
+
+      match /messages/{messageId} {
+        allow read, create: if isSignedIn()
+                  && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow update, delete: if false;
+      }
+    }
+
+    // notifications/{uid}/items/{itemId}
+    match /notifications/{uid}/items/{itemId} {
+      allow read, update, delete: if isOwner(uid);
+      allow create: if isSignedIn();
+    }
+
+    // Default deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
