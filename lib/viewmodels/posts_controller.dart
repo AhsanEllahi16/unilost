@@ -59,7 +59,8 @@ class PostsController extends GetxController {
         'description':   post.description,
         'location':      post.location,
         'category':      post.category,
-        'image':         post.image,
+        'imageUrl':      post.imageUrl,
+        'urgencyLevel':  post.urgencyLevel,
         'postedByUid':   post.postedByUid,
         'postedByName':  post.postedByName,
         'postedByEmail': post.postedByEmail,
@@ -73,7 +74,6 @@ class PostsController extends GetxController {
       latestMatch.value = result;
 
       if (result != null && result.isMatch) {
-        // ✅ Nice match found dialog instead of plain snackbar
         _showMatchDialog(result);
       }
     } catch (e) {
@@ -83,7 +83,6 @@ class PostsController extends GetxController {
     }
   }
 
-  // ✅ Beautiful match found dialog
   void _showMatchDialog(MatchResult result) {
     Get.dialog(
       Dialog(
@@ -95,7 +94,6 @@ class PostsController extends GetxController {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ✅ Celebration icon
               Container(
                 width: 80,
                 height: 80,
@@ -111,8 +109,6 @@ class PostsController extends GetxController {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Title
               const Text(
                 'Match Found!',
                 style: TextStyle(
@@ -121,8 +117,6 @@ class PostsController extends GetxController {
                 ),
               ),
               const SizedBox(height: 8),
-
-              // Confidence badge
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -142,8 +136,6 @@ class PostsController extends GetxController {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Matched item
               if (result.matchedPost != null)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -182,10 +174,7 @@ class PostsController extends GetxController {
                     ],
                   ),
                 ),
-
               const SizedBox(height: 10),
-
-              // Reason
               Text(
                 result.reason,
                 textAlign: TextAlign.center,
@@ -194,10 +183,7 @@ class PostsController extends GetxController {
                   color: Colors.grey.shade600,
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // ✅ Go to chat button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -217,10 +203,7 @@ class PostsController extends GetxController {
                   ),
                 ),
               ),
-
               const SizedBox(height: 8),
-
-              // Dismiss
               TextButton(
                 onPressed: () => Get.back(),
                 child: const Text('Dismiss'),
@@ -238,14 +221,16 @@ class PostsController extends GetxController {
     required String title,
     required String description,
     required String location,
-    required String image,
+    required String imageUrl,
+    required String urgencyLevel,
   }) async {
     await _repo.updatePost(
-      id:          id,
-      title:       title,
-      description: description,
-      location:    location,
-      image:       image,
+      id:            id,
+      title:         title,
+      description:   description,
+      location:      location,
+      imageUrl:      imageUrl,
+      urgencyLevel:  urgencyLevel,
     );
   }
 

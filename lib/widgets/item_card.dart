@@ -78,7 +78,6 @@ class ItemCard extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
-                        // ✅ Adapts to dark mode
                         color: Theme.of(context).colorScheme.onSurface,
                       ),
                       maxLines: 1,
@@ -93,7 +92,6 @@ class ItemCard extends StatelessWidget {
                         Icon(
                           Icons.location_on,
                           size: 14,
-                          // ✅ Adapts to dark mode
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
@@ -105,7 +103,6 @@ class ItemCard extends StatelessWidget {
                             post.location,
                             style: TextStyle(
                               fontSize: 12,
-                              // ✅ Adapts to dark mode
                               color: Theme.of(context)
                                   .colorScheme
                                   .onSurface
@@ -143,11 +140,10 @@ class ItemCard extends StatelessWidget {
     );
   }
 
-  // ✅ context passed in so placeholder can use theme colors
   Widget _buildImage(BuildContext context) {
-    if (post.image.isNotEmpty && post.image.startsWith('http')) {
+    if (post.imageUrl.isNotEmpty && post.imageUrl.startsWith('http')) {
       return Image.network(
-        post.image,
+        post.imageUrl,
         width: 110,
         height: 100,
         fit: BoxFit.cover,
@@ -155,9 +151,9 @@ class ItemCard extends StatelessWidget {
       );
     }
 
-    if (post.image.isNotEmpty) {
+    if (post.imageUrl.isNotEmpty) {
       return Image.asset(
-        post.image,
+        post.imageUrl,
         width: 110,
         height: 100,
         fit: BoxFit.cover,
@@ -172,12 +168,10 @@ class ItemCard extends StatelessWidget {
     return Container(
       width: 110,
       height: 100,
-      // ✅ Adapts to dark mode
       color: Theme.of(context).colorScheme.surfaceVariant,
       child: Icon(
         Icons.broken_image,
         size: 36,
-        // ✅ Adapts to dark mode
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );

@@ -28,8 +28,9 @@ class _PostItemScreenState extends State<PostItemScreen> {
   final descC     = TextEditingController();
   final locationC = TextEditingController();
 
-  String category = 'lost';
-  bool loading    = false;
+  String category     = 'lost';
+  String urgencyLevel = 'low';
+  bool loading         = false;
 
   Uint8List? selectedImageBytes;
   String existingImageUrl = '';
@@ -38,12 +39,13 @@ class _PostItemScreenState extends State<PostItemScreen> {
   void initState() {
     super.initState();
     if (widget.existingPost != null) {
-      final p        = widget.existingPost!;
-      titleC.text    = p.title;
-      descC.text     = p.description;
-      locationC.text = p.location;
-      category       = p.category;
-      existingImageUrl = p.image;
+      final p          = widget.existingPost!;
+      titleC.text      = p.title;
+      descC.text       = p.description;
+      locationC.text   = p.location;
+      category         = p.category;
+      urgencyLevel     = p.urgencyLevel;
+      existingImageUrl = p.imageUrl;
     }
   }
 
@@ -104,7 +106,8 @@ class _PostItemScreenState extends State<PostItemScreen> {
           description:   descC.text.trim(),
           location:      locationC.text.trim(),
           category:      category,
-          image:         imgUrl,
+          imageUrl:      imgUrl,
+          urgencyLevel:  urgencyLevel,
           postedByUid:   user.uid,
           postedByName:  user.displayName ?? 'User',
           postedByEmail: user.email ?? '',
@@ -123,11 +126,12 @@ class _PostItemScreenState extends State<PostItemScreen> {
         }
       } else {
         await postsC.updatePost(
-          id:          widget.existingPost!.id,
-          title:       titleC.text.trim(),
-          description: descC.text.trim(),
-          location:    locationC.text.trim(),
-          image:       imgUrl,
+          id:            widget.existingPost!.id,
+          title:         titleC.text.trim(),
+          description:   descC.text.trim(),
+          location:      locationC.text.trim(),
+          imageUrl:      imgUrl,
+          urgencyLevel:  urgencyLevel,
         );
         AppSnackbar.success('Your post has been updated successfully ✅');
         Get.offAllNamed(Routes.myPosts);
@@ -181,10 +185,34 @@ class _PostItemScreenState extends State<PostItemScreen> {
 
             const SizedBox(height: 16),
 
-            // ✅ IMAGE — small square preview like card
+            // URGENCY LEVEL
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Urgency Level',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
-                // Square image preview
+                _urgencyChip('Low',    'low',    Colors.blue.shade100),
+                const SizedBox(width: 8),
+                _urgencyChip('Medium', 'medium', Colors.orange.shade100),
+                const SizedBox(width: 8),
+                _urgencyChip('High',   'high',   Colors.red.shade100),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // IMAGE — small square preview like card
+            Row(
+              children: [
                 GestureDetector(
                   onTap: pickImage,
                   child: Container(
@@ -224,7 +252,6 @@ class _PostItemScreenState extends State<PostItemScreen> {
 
                 const SizedBox(width: 16),
 
-                // Upload button beside image
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -342,6 +369,15 @@ class _PostItemScreenState extends State<PostItemScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _urgencyChip(String label, String value, Color selectedColor) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: urgencyLevel == value,
+      onSelected: (_) => setState(() => urgencyLevel = value),
+      selectedColor: selectedColor,
     );
   }
 

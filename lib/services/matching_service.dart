@@ -108,32 +108,50 @@ class MatchingService {
     }
   }
 
-  // ── Call Groq AI to compare two items ──
+  // ── Call Groq's multimodal (vision) model to compare two items ──
+  // Uses qwen/qwen3.6-27b, Groq's current vision-capable model, so the
+  // AI compares BOTH the text details AND the uploaded images (when
+  // present) — satisfying the SDD's "Multimodal AI Matching Engine"
+  // requirement (module 1.3.4), not just text semantic comparison.
   static Future<Map<String, dynamic>> _compareWithGroq(
       Map<String, dynamic> post1,
       Map<String, dynamic> post2,
       ) async {
     try {
-      final prompt = '''
+      final String? image1 =
+      (post1['imageUrl'] as String?)?.isNotEmpty == true
+          ? post1['imageUrl'] as String
+          : null;
+      final String? image2 =
+      (post2['imageUrl'] as String?)?.isNotEmpty == true
+          ? post2['imageUrl'] as String
+          : null;
+
+      final introText = '''
 You are a lost and found item matching assistant 
 for COMSATS University app.
 
 Compare these two items and determine if they 
-could be the same item:
+could be the same item. If images are attached below,
+examine their visual appearance (color, shape, brand,
+material, distinguishing marks) as part of your comparison,
+not just the text.
 
 ITEM 1 (${(post1['category'] as String).toUpperCase()}):
 - Title: ${post1['title']}
 - Description: ${post1['description']}
 - Location: ${post1['location']}
+${image1 == null ? '(No image provided for Item 1)' : ''}
 
 ITEM 2 (${(post2['category'] as String).toUpperCase()}):
 - Title: ${post2['title']}
 - Description: ${post2['description']}
 - Location: ${post2['location']}
+${image2 == null ? '(No image provided for Item 2)' : ''}
 
 Consider:
 1. Are these the same type of item?
-2. Do descriptions suggest same item?
+2. Do descriptions and images (if provided) suggest same item?
 3. Are locations same or nearby campus areas?
 4. Could this be same item reported as lost and found?
 
@@ -144,6 +162,26 @@ Reply ONLY in this exact JSON format, nothing else:
   "reason": "one sentence explanation"
 }''';
 
+      final List<Map<String, dynamic>> content = [
+        {'type': 'text', 'text': introText},
+      ];
+
+      if (image1 != null) {
+        content.add({'type': 'text', 'text': 'Image of ITEM 1:'});
+        content.add({
+          'type': 'image_url',
+          'image_url': {'url': image1},
+        });
+      }
+
+      if (image2 != null) {
+        content.add({'type': 'text', 'text': 'Image of ITEM 2:'});
+        content.add({
+          'type': 'image_url',
+          'image_url': {'url': image2},
+        });
+      }
+
       final response = await http.post(
         Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
         headers: {
@@ -151,15 +189,15 @@ Reply ONLY in this exact JSON format, nothing else:
           'Content-Type':  'application/json',
         },
         body: jsonEncode({
-          'model': 'openai/gpt-oss-120b',
+          'model': 'qwen/qwen3.6-27b',
           'messages': [
             {
               'role':    'user',
-              'content': prompt,
+              'content': content,
             }
           ],
           'temperature': 0.1,
-          'max_tokens':  200,
+          'max_tokens':  300,
         }),
       );
 

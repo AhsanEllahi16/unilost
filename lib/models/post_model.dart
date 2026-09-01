@@ -1,3 +1,4 @@
+// lib/models/post_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PostModel {
@@ -6,7 +7,9 @@ class PostModel {
   final String description;
   final String location;
   final String category;
-  final String image;
+  final String imageUrl;
+  final String urgencyLevel; // 'low' | 'medium' | 'high'
+  final String status;       // 'active' | 'matched' | 'resolved' | 'deleted'
   final String postedByName;
   final String postedByUid;
   final String postedByEmail;
@@ -18,7 +21,9 @@ class PostModel {
     required this.description,
     required this.location,
     required this.category,
-    required this.image,
+    required this.imageUrl,
+    this.urgencyLevel = 'low',
+    this.status = 'active',
     required this.postedByName,
     required this.postedByUid,
     required this.postedByEmail,
@@ -35,7 +40,11 @@ class PostModel {
       description: d['description'] ?? '',
       location: d['location'] ?? '',
       category: d['category'] ?? 'lost',
-      image: d['image'] ?? '',
+      // Falls back to the old 'image' field name for any posts created
+      // before this rename, so existing data keeps working.
+      imageUrl: d['imageUrl'] ?? d['image'] ?? '',
+      urgencyLevel: d['urgencyLevel'] ?? 'low',
+      status: d['status'] ?? 'active',
       postedByName: d['postedByName'] ?? '',
       postedByUid: d['postedByUid'] ?? '',
       postedByEmail: d['postedByEmail'] ?? '',
@@ -50,7 +59,9 @@ class PostModel {
       'description': description,
       'location': location,
       'category': category,
-      'image': image,
+      'imageUrl': imageUrl,
+      'urgencyLevel': urgencyLevel,
+      'status': status,
       'postedByName': postedByName,
       'postedByUid': postedByUid,
       'postedByEmail': postedByEmail,

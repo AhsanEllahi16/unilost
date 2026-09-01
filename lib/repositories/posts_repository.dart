@@ -17,7 +17,7 @@ class PostsRepository {
     );
   }
 
-  // ✅ Now returns document ID for matching service
+  // Returns document ID for the matching service
   Future<String> addPost(PostModel post) async {
     final doc = await _db
         .collection('posts')
@@ -30,13 +30,15 @@ class PostsRepository {
     required String title,
     required String description,
     required String location,
-    required String image,
+    required String imageUrl,
+    required String urgencyLevel,
   }) async {
     await _db.collection('posts').doc(id).update({
-      'title':       title,
-      'description': description,
-      'location':    location,
-      'image':       image,
+      'title':        title,
+      'description':  description,
+      'location':     location,
+      'imageUrl':     imageUrl,
+      'urgencyLevel': urgencyLevel,
     });
   }
 

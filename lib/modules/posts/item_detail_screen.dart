@@ -31,44 +31,67 @@ class ItemDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ✅ IMAGE + BASIC INFO ROW (like card style)
+            // IMAGE + BASIC INFO ROW (like card style)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Square image
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: _buildImage(p, size: 120),
                 ),
                 const SizedBox(width: 16),
 
-                // Info beside image
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Category badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: p.category == 'lost'
-                              ? Colors.red.shade100
-                              : Colors.green.shade100,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          p.category.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: p.category == 'lost'
-                                ? Colors.red.shade700
-                                : Colors.green.shade700,
+                      // Category + Urgency badges row
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: p.category == 'lost'
+                                  ? Colors.red.shade100
+                                  : Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              p.category.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: p.category == 'lost'
+                                    ? Colors.red.shade700
+                                    : Colors.green.shade700,
+                              ),
+                            ),
                           ),
-                        ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _urgencyColor(p.urgencyLevel)
+                                  .withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '${p.urgencyLevel.toUpperCase()} URGENCY',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _urgencyColor(p.urgencyLevel),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
 
@@ -136,7 +159,7 @@ class ItemDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            // ✅ DESCRIPTION CARD
+            // DESCRIPTION CARD
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -166,7 +189,7 @@ class ItemDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // ✅ DETAILS CARD
+            // DETAILS CARD
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -181,6 +204,20 @@ class ItemDetailScreen extends StatelessWidget {
                     icon: Icons.category_outlined,
                     label: 'Category',
                     value: p.category.toUpperCase(),
+                  ),
+                  const Divider(height: 16),
+                  _detailRow(
+                    context,
+                    icon: Icons.priority_high,
+                    label: 'Urgency',
+                    value: p.urgencyLevel.toUpperCase(),
+                  ),
+                  const Divider(height: 16),
+                  _detailRow(
+                    context,
+                    icon: Icons.info_outline,
+                    label: 'Status',
+                    value: p.status.toUpperCase(),
                   ),
                   const Divider(height: 16),
                   _detailRow(
@@ -209,7 +246,7 @@ class ItemDetailScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // ✅ CONTACT BUTTON
+            // CONTACT BUTTON
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -237,6 +274,17 @@ class ItemDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _urgencyColor(String level) {
+    switch (level) {
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.orange;
+      default:
+        return Colors.blue;
+    }
   }
 
   Widget _detailRow(
@@ -286,18 +334,18 @@ class ItemDetailScreen extends StatelessWidget {
   }
 
   Widget _buildImage(PostModel p, {required double size}) {
-    if (p.image.isNotEmpty && p.image.startsWith('http')) {
+    if (p.imageUrl.isNotEmpty && p.imageUrl.startsWith('http')) {
       return Image.network(
-        p.image,
+        p.imageUrl,
         width: size,
         height: size,
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => _placeholder(size),
       );
     }
-    if (p.image.isNotEmpty) {
+    if (p.imageUrl.isNotEmpty) {
       return Image.asset(
-        p.image,
+        p.imageUrl,
         width: size,
         height: size,
         fit: BoxFit.cover,
