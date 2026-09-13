@@ -11,32 +11,52 @@ class AuthRepository {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ✅ Login using roll number — looks up email from Firestore first
+  // ── Check roll number against the university's valid_students list ──
+  Future<Map<String, dynamic>> validateRollNumber(String rollNo) async {
+    final doc = await _db.collection('valid_students').doc(rollNo).get();
+
+    if (!doc.exists) {
+      throw Exception(
+        'This roll number is not recognized as a valid COMSATS Sahiwal '
+            'student. Please contact administration if you believe this is '
+            'an error.',
+      );
+    }
+
+    final data = doc.data()!;
+    final bool alreadyRegistered = data['isRegistered'] == true;
+
+    if (alreadyRegistered) {
+      throw Exception(
+        'An account already exists for this roll number. Please login '
+            'instead.',
+      );
+    }
+
+    return data;
+  }
+
+  // ✅ Login using roll number — now looks up email via the public
+  // roll_lookup collection instead of querying profiles, since that
+  // lookup must work BEFORE the user is authenticated.
   Future<UserModel> loginWithRollNo({
     required String rollNo,
     required String password,
   }) async {
-    // Step 1: Find the profile document where rollNo matches
-    final query = await _db
-        .collection('profiles')
-        .where('rollNo', isEqualTo: rollNo)
-        .limit(1)
-        .get();
+    final doc = await _db.collection('roll_lookup').doc(rollNo).get();
 
-    if (query.docs.isEmpty) {
+    if (!doc.exists) {
       throw Exception(
         'No account found with this roll number. Please sign up first.',
       );
     }
 
-    // Step 2: Get the email from that profile
-    final email = query.docs.first.data()['email'] as String;
+    final email = doc.data()?['email'] as String? ?? '';
 
     if (email.isEmpty) {
       throw Exception('Account email not found. Please contact support.');
     }
 
-    // Step 3: Login with Firebase Auth using email + password
     final cred = await _auth.signInWithEmailAndPassword(
       email: email,
       password: password,
@@ -75,6 +95,12 @@ class AuthRepository {
     required String phone,
     required String rollNo,
   }) async {
+    // ── Step 1: Validate roll number BEFORE creating any account ──
+    await validateRollNumber(rollNo);
+
+    // ── Step 2: Create the Firebase Auth account ──
+    // This automatically signs the new user in, so everything after
+    // this point runs as an authenticated request.
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
@@ -95,6 +121,17 @@ class AuthRepository {
     );
 
     await profileRepo.saveProfile(profile);
+
+    // ── Step 3: Mark this roll number as registered ──
+    await _db.collection('valid_students').doc(rollNo).update({
+      'isRegistered': true,
+    });
+
+    // ── Step 4: Create the public roll_lookup entry for future logins ──
+    await _db.collection('roll_lookup').doc(rollNo).set({
+      'email': email,
+      'uid':   user.uid,
+    });
 
     return UserModel(
       uid:   user.uid,

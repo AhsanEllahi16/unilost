@@ -54,6 +54,11 @@ class SignupControllerX extends GetxController {
     final phoneVal = phone.value.trim();
     final rollVal  = rollNo.value.trim();
 
+    // ── Basic field checks first (fast, no network needed) ──
+    if (validateRollNo(rollVal) != null) {
+      AppSnackbar.warning('Please enter your roll number.');
+      return;
+    }
     if (validateName(nameVal) != null) {
       AppSnackbar.warning('Please enter your full name.');
       return;
@@ -66,10 +71,6 @@ class SignupControllerX extends GetxController {
       AppSnackbar.warning('Please enter your phone number.');
       return;
     }
-    if (validateRollNo(rollVal) != null) {
-      AppSnackbar.warning('Please enter your roll number.');
-      return;
-    }
     if (validatePassword(passVal) != null) {
       AppSnackbar.warning('Password must be at least 6 characters.');
       return;
@@ -77,6 +78,11 @@ class SignupControllerX extends GetxController {
 
     try {
       loading.value = true;
+
+      // ── Roll number gets checked against valid_students inside
+      // repo.signup() BEFORE any account is created. If it's not a
+      // recognized COMSATS Sahiwal roll number, or it's already used,
+      // this throws before Firebase Auth is ever touched. ──
       await _repo.signup(
         name:     nameVal,
         email:    emailVal,
@@ -84,10 +90,18 @@ class SignupControllerX extends GetxController {
         phone:    phoneVal,
         rollNo:   rollVal,
       );
+
       AppSnackbar.success('Account created successfully! Welcome 🎉');
       Get.offAllNamed(Routes.home);
     } catch (e) {
-      AppSnackbar.error(AppSnackbar.friendlyFirebaseError(e));
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      // Show the specific roll-number message if that's what failed,
+      // otherwise fall back to the friendly Firebase error translator.
+      if (msg.contains('roll number') || msg.contains('already exists')) {
+        AppSnackbar.error(msg);
+      } else {
+        AppSnackbar.error(AppSnackbar.friendlyFirebaseError(e));
+      }
     } finally {
       loading.value = false;
     }

@@ -8,8 +8,13 @@ class PostModel {
   final String location;
   final String category;
   final String imageUrl;
-  final String urgencyLevel; // 'low' | 'medium' | 'high'
-  final String status;       // 'active' | 'matched' | 'resolved' | 'deleted'
+  final String urgencyLevel;
+  final String status;
+  final String custody;
+  final bool dropOffConfirmedByFinder;
+  final bool dropOffReceivedByAdmin;
+  final String? disposalReceipt;
+  final DateTime? disposedAt;
   final String postedByName;
   final String postedByUid;
   final String postedByEmail;
@@ -24,6 +29,11 @@ class PostModel {
     required this.imageUrl,
     this.urgencyLevel = 'low',
     this.status = 'active',
+    this.custody = 'finder',
+    this.dropOffConfirmedByFinder = false,
+    this.dropOffReceivedByAdmin = false,
+    this.disposalReceipt,
+    this.disposedAt,
     required this.postedByName,
     required this.postedByUid,
     required this.postedByEmail,
@@ -40,11 +50,14 @@ class PostModel {
       description: d['description'] ?? '',
       location: d['location'] ?? '',
       category: d['category'] ?? 'lost',
-      // Falls back to the old 'image' field name for any posts created
-      // before this rename, so existing data keeps working.
       imageUrl: d['imageUrl'] ?? d['image'] ?? '',
       urgencyLevel: d['urgencyLevel'] ?? 'low',
       status: d['status'] ?? 'active',
+      custody: d['custody'] ?? 'finder',
+      dropOffConfirmedByFinder: d['dropOffConfirmedByFinder'] ?? false,
+      dropOffReceivedByAdmin: d['dropOffReceivedByAdmin'] ?? false,
+      disposalReceipt: d['disposalReceipt'],
+      disposedAt: (d['disposedAt'] as Timestamp?)?.toDate(),
       postedByName: d['postedByName'] ?? '',
       postedByUid: d['postedByUid'] ?? '',
       postedByEmail: d['postedByEmail'] ?? '',
@@ -62,6 +75,13 @@ class PostModel {
       'imageUrl': imageUrl,
       'urgencyLevel': urgencyLevel,
       'status': status,
+      'custody': custody,
+      'dropOffConfirmedByFinder':
+      custody == 'admin' ? dropOffConfirmedByFinder : false,
+      'dropOffReceivedByAdmin':
+      custody == 'admin' ? dropOffReceivedByAdmin : false,
+      if (disposalReceipt != null) 'disposalReceipt': disposalReceipt,
+      if (disposedAt != null) 'disposedAt': Timestamp.fromDate(disposedAt!),
       'postedByName': postedByName,
       'postedByUid': postedByUid,
       'postedByEmail': postedByEmail,

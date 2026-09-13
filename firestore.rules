@@ -10,18 +10,49 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // A write to profiles/{uid} that touches ONLY the matchCount field.
-    // Needed because AI matching currently runs client-side (not yet a
-    // Cloud Function), so the OTHER matched student's client is the one
-    // incrementing this profile's matchCount. Every other profile field
-    // stays owner-only.
     function isMatchCountOnlyUpdate() {
       return isSignedIn()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['matchCount']);
     }
 
-    // profiles/{uid}
+    function isMarkingRegistered() {
+      return isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['isRegistered'])
+        && request.resource.data.isRegistered == true;
+    }
+
+    function isFinderConfirmingDropOff() {
+      return isSignedIn()
+        && resource.data.postedByUid == request.auth.uid
+        && resource.data.custody == 'admin'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['dropOffConfirmedByFinder'])
+        && request.resource.data.dropOffConfirmedByFinder == true;
+    }
+
+    function isAdminReceivingDropOff() {
+      return isSignedIn()
+        && resource.data.custody == 'admin'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['dropOffReceivedByAdmin'])
+        && request.resource.data.dropOffReceivedByAdmin == true;
+    }
+
+    match /valid_students/{rollNumber} {
+      allow read: if true;
+      allow update: if isMarkingRegistered();
+      allow create, delete: if false;
+    }
+
+    match /roll_lookup/{rollNumber} {
+      allow read: if true;
+      allow create: if isSignedIn()
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /profiles/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid);
@@ -29,17 +60,48 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // posts/{postId}
     match /posts/{postId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
                     && request.resource.data.postedByUid == request.auth.uid;
-      allow update, delete: if isSignedIn()
+      allow update: if isSignedIn()
+                    && (resource.data.postedByUid == request.auth.uid
+                        || isFinderConfirmingDropOff()
+                        || isAdminReceivingDropOff());
+      allow delete: if isSignedIn()
                     && resource.data.postedByUid == request.auth.uid;
     }
 
-    // matches/{matchId} — written only by matching logic run as the
-    // authenticated poster; both participants may read
+    match /post_secrets/{postId} {
+      allow read: if isSignedIn() &&
+        (get(/databases/$(database)/documents/posts/$(postId)).data.postedByUid == request.auth.uid ||
+         exists(/databases/$(database)/documents/verifications/$(postId + '_' + request.auth.uid)));
+      allow create, update: if isSignedIn() &&
+        get(/databases/$(database)/documents/posts/$(postId)).data.postedByUid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // verifications/{postId_claimantUid} — one active verification
+    // record per claimant per found post. The read rule explicitly
+    // allows checking a verification that doesn't exist yet
+    // (resource == null) — the app's "does a claim already exist"
+    // check runs BEFORE any document is created, so resource is null
+    // on that very first read, and referencing resource.data without
+    // this guard causes an evaluation error (treated as deny).
+    match /verifications/{verificationId} {
+      allow read: if isSignedIn() &&
+        (resource == null ||
+         resource.data.claimantUid == request.auth.uid ||
+         resource.data.finderUid == request.auth.uid);
+      allow create: if isSignedIn() &&
+        request.resource.data.claimantUid == request.auth.uid &&
+        verificationId == (request.resource.data.foundPostId + '_' + request.auth.uid);
+      allow update: if isSignedIn() &&
+        (resource.data.claimantUid == request.auth.uid ||
+         resource.data.finderUid == request.auth.uid);
+      allow delete: if false;
+    }
+
     match /matches/{matchId} {
       allow read: if isSignedIn()
                   && (resource.data.lostUserUid == request.auth.uid
@@ -48,7 +110,6 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // chats/{chatId} and its messages subcollection
     match /chats/{chatId} {
       allow read, write: if isSignedIn()
                   && request.auth.uid in resource.data.participants;
@@ -62,13 +123,11 @@ service cloud.firestore {
       }
     }
 
-    // notifications/{uid}/items/{itemId}
     match /notifications/{uid}/items/{itemId} {
       allow read, update, delete: if isOwner(uid);
       allow create: if isSignedIn();
     }
 
-    // Default deny everything else
     match /{document=**} {
       allow read, write: if false;
     }

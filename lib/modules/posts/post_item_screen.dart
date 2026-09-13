@@ -14,11 +14,27 @@ import '../../utils/snackbars.dart';
 
 class PostItemScreen extends StatefulWidget {
   final PostModel? existingPost;
+  // Which category to preselect for a NEW post — ignored when editing.
+  final String initialCategory;
 
-  const PostItemScreen({super.key, this.existingPost});
+  const PostItemScreen({
+    super.key,
+    this.existingPost,
+    this.initialCategory = 'lost',
+  });
 
   @override
   State<PostItemScreen> createState() => _PostItemScreenState();
+}
+
+class _QAControllerPair {
+  final TextEditingController question = TextEditingController();
+  final TextEditingController answer   = TextEditingController();
+
+  void dispose() {
+    question.dispose();
+    answer.dispose();
+  }
 }
 
 class _PostItemScreenState extends State<PostItemScreen> {
@@ -28,8 +44,12 @@ class _PostItemScreenState extends State<PostItemScreen> {
   final descC     = TextEditingController();
   final locationC = TextEditingController();
 
-  String category     = 'lost';
+  static const int maxQuestions = 3;
+  final List<_QAControllerPair> qaControllers = [_QAControllerPair()];
+
+  late String category;
   String urgencyLevel = 'low';
+  String custody       = 'finder';
   bool loading         = false;
 
   Uint8List? selectedImageBytes;
@@ -46,6 +66,8 @@ class _PostItemScreenState extends State<PostItemScreen> {
       category         = p.category;
       urgencyLevel     = p.urgencyLevel;
       existingImageUrl = p.imageUrl;
+    } else {
+      category = widget.initialCategory;
     }
   }
 
@@ -54,7 +76,23 @@ class _PostItemScreenState extends State<PostItemScreen> {
     titleC.dispose();
     descC.dispose();
     locationC.dispose();
+    for (final c in qaControllers) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  void _addQuestion() {
+    if (qaControllers.length >= maxQuestions) return;
+    setState(() => qaControllers.add(_QAControllerPair()));
+  }
+
+  void _removeQuestion(int index) {
+    if (qaControllers.length <= 1) return;
+    setState(() {
+      qaControllers[index].dispose();
+      qaControllers.removeAt(index);
+    });
   }
 
   Future<void> pickImage() async {
@@ -87,6 +125,28 @@ class _PostItemScreenState extends State<PostItemScreen> {
       return;
     }
 
+    final bool isNewFoundPost =
+        widget.existingPost == null && category == 'found';
+
+    List<Map<String, String>> qaPairs = [];
+
+    if (isNewFoundPost) {
+      for (final pair in qaControllers) {
+        final q = pair.question.text.trim();
+        final a = pair.answer.text.trim();
+        if (q.isNotEmpty && a.isNotEmpty) {
+          qaPairs.add({'question': q, 'answer': a});
+        }
+      }
+      if (qaPairs.isEmpty) {
+        AppSnackbar.warning(
+          'Please add at least one verification question and answer — '
+              'this confirms the real owner when someone claims this item.',
+        );
+        return;
+      }
+    }
+
     setState(() => loading = true);
 
     try {
@@ -107,16 +167,22 @@ class _PostItemScreenState extends State<PostItemScreen> {
           location:      locationC.text.trim(),
           category:      category,
           imageUrl:      imgUrl,
-          urgencyLevel:  urgencyLevel,
+          urgencyLevel:  category == 'lost' ? urgencyLevel : 'low',
+          custody:       category == 'found' ? custody : 'finder',
           postedByUid:   user.uid,
           postedByName:  user.displayName ?? 'User',
           postedByEmail: user.email ?? '',
           createdAt:     DateTime.now(),
         );
-        await postsC.addPost(post);
+        await postsC.addPost(
+          post,
+          verificationQAPairs: isNewFoundPost ? qaPairs : null,
+        );
         AppSnackbar.success(
           category == 'lost'
               ? 'Lost item posted! We will notify you if a match is found 🔍'
+              : custody == 'admin'
+              ? 'Found item posted and marked as dropped off with admin ✅'
               : 'Found item posted! We will notify the owner 🎉',
         );
         if (category == 'lost') {
@@ -131,7 +197,7 @@ class _PostItemScreenState extends State<PostItemScreen> {
           description:   descC.text.trim(),
           location:      locationC.text.trim(),
           imageUrl:      imgUrl,
-          urgencyLevel:  urgencyLevel,
+          urgencyLevel:  category == 'lost' ? urgencyLevel : 'low',
         );
         AppSnackbar.success('Your post has been updated successfully ✅');
         Get.offAllNamed(Routes.myPosts);
@@ -146,6 +212,9 @@ class _PostItemScreenState extends State<PostItemScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingPost != null;
+    final showCustodyChoice = !isEditing && category == 'found';
+    final showVerificationFields = !isEditing && category == 'found';
+    final showUrgency = category == 'lost';
 
     return Scaffold(
       appBar: AppBar(
@@ -161,56 +230,110 @@ class _PostItemScreenState extends State<PostItemScreen> {
         child: Column(
           children: [
 
-            // CATEGORY TOGGLE
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 ChoiceChip(
                   label: const Text('Lost'),
                   selected: category == 'lost',
-                  onSelected: (_) =>
-                      setState(() => category = 'lost'),
+                  onSelected: isEditing
+                      ? null
+                      : (_) => setState(() => category = 'lost'),
                   selectedColor: Colors.red.shade100,
                 ),
                 const SizedBox(width: 12),
                 ChoiceChip(
                   label: const Text('Found'),
                   selected: category == 'found',
-                  onSelected: (_) =>
-                      setState(() => category = 'found'),
+                  onSelected: isEditing
+                      ? null
+                      : (_) => setState(() => category = 'found'),
                   selectedColor: Colors.green.shade100,
                 ),
               ],
             ),
 
-            const SizedBox(height: 16),
-
-            // URGENCY LEVEL
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Urgency Level',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
+            if (showUrgency) ...[
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Urgency Level',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _urgencyChip('Low',    'low',    Colors.blue.shade100),
-                const SizedBox(width: 8),
-                _urgencyChip('Medium', 'medium', Colors.orange.shade100),
-                const SizedBox(width: 8),
-                _urgencyChip('High',   'high',   Colors.red.shade100),
-              ],
-            ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _urgencyChip('Low',    'low',    Colors.blue.shade100),
+                  const SizedBox(width: 8),
+                  _urgencyChip('Medium', 'medium', Colors.orange.shade100),
+                  const SizedBox(width: 8),
+                  _urgencyChip('High',   'high',   Colors.red.shade100),
+                ],
+              ),
+            ],
+
+            if (showCustodyChoice) ...[
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'What do you want to do with this item?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'finder',
+                groupValue: custody,
+                onChanged: (v) => setState(() => custody = v!),
+                title: const Text("I'll hold onto it"),
+                subtitle: const Text(
+                  "You'll coordinate the handover directly once matched.",
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: 'admin',
+                groupValue: custody,
+                onChanged: (v) => setState(() => custody = v!),
+                title: const Text('Hand it to admin now'),
+                subtitle: const Text(
+                  "Drop it off with the Lost & Found office right away.",
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              if (custody == 'admin')
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: const Text(
+                    '⚠️ Please physically drop this item off with the '
+                        'admin/Lost & Found office as soon as you submit '
+                        'this post.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
 
             const SizedBox(height: 16),
 
-            // IMAGE — small square preview like card
             Row(
               children: [
                 GestureDetector(
@@ -219,16 +342,13 @@ class _PostItemScreenState extends State<PostItemScreen> {
                     width: 120,
                     height: 120,
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey.shade300,
-                      ),
+                      border: Border.all(color: Colors.grey.shade300),
                       borderRadius: BorderRadius.circular(12),
                       color: Colors.grey.shade50,
                     ),
                     child: selectedImageBytes != null
                         ? ClipRRect(
-                      borderRadius:
-                      BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12),
                       child: Image.memory(
                         selectedImageBytes!,
                         fit: BoxFit.cover,
@@ -236,26 +356,20 @@ class _PostItemScreenState extends State<PostItemScreen> {
                     )
                         : existingImageUrl.isNotEmpty
                         ? ClipRRect(
-                      borderRadius:
-                      BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(12),
                       child: Image.network(
                         existingImageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, __, ___) =>
-                            _imagePlaceholder(),
+                        errorBuilder: (_, __, ___) => _imagePlaceholder(),
                       ),
                     )
                         : _imagePlaceholder(),
                   ),
                 ),
-
                 const SizedBox(width: 16),
-
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Item Photo',
@@ -294,7 +408,6 @@ class _PostItemScreenState extends State<PostItemScreen> {
 
             const SizedBox(height: 20),
 
-            // TITLE
             TextField(
               controller: titleC,
               decoration: const InputDecoration(
@@ -302,10 +415,7 @@ class _PostItemScreenState extends State<PostItemScreen> {
                 hintText: 'e.g. Black leather wallet',
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // DESCRIPTION
             TextField(
               controller: descC,
               maxLines: 3,
@@ -314,10 +424,7 @@ class _PostItemScreenState extends State<PostItemScreen> {
                 hintText: 'Describe the item in detail...',
               ),
             ),
-
             const SizedBox(height: 12),
-
-            // LOCATION
             TextField(
               controller: locationC,
               decoration: const InputDecoration(
@@ -326,9 +433,90 @@ class _PostItemScreenState extends State<PostItemScreen> {
               ),
             ),
 
+            if (showVerificationFields) ...[
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Verification Questions (at least 1 required)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                  if (qaControllers.length < maxQuestions)
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      color: UniLostTheme.primary,
+                      tooltip: 'Add another question',
+                      onPressed: _addQuestion,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Ask something only the real owner would know — these "
+                    "stay hidden and are never shown publicly. You can add "
+                    "up to $maxQuestions questions; a claimant will need to "
+                    "get most of them right.",
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 10),
+              for (int i = 0; i < qaControllers.length; i++)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Question ${i + 1}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (qaControllers.length > 1)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              color: Colors.red.shade300,
+                              onPressed: () => _removeQuestion(i),
+                            ),
+                        ],
+                      ),
+                      TextField(
+                        controller: qaControllers[i].question,
+                        decoration: const InputDecoration(
+                          labelText: 'Question',
+                          hintText: 'e.g. What was inside the side pocket?',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: qaControllers[i].answer,
+                        decoration: const InputDecoration(
+                          labelText: 'Correct Answer',
+                          hintText: 'e.g. An expired student ID',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+
             const SizedBox(height: 24),
 
-            // SUBMIT BUTTON
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -340,8 +528,7 @@ class _PostItemScreenState extends State<PostItemScreen> {
                 ),
                 child: loading
                     ? const Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SizedBox(
                       height: 20,
@@ -352,10 +539,7 @@ class _PostItemScreenState extends State<PostItemScreen> {
                       ),
                     ),
                     SizedBox(width: 12),
-                    Text(
-                      'Submitting...',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    Text('Submitting...', style: TextStyle(fontSize: 16)),
                   ],
                 )
                     : Text(
@@ -385,19 +569,9 @@ class _PostItemScreenState extends State<PostItemScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: const [
-        Icon(
-          Icons.add_photo_alternate_outlined,
-          size: 36,
-          color: Colors.grey,
-        ),
+        Icon(Icons.add_photo_alternate_outlined, size: 36, color: Colors.grey),
         SizedBox(height: 6),
-        Text(
-          'Tap to add',
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey,
-          ),
-        ),
+        Text('Tap to add', style: TextStyle(fontSize: 11, color: Colors.grey)),
       ],
     );
   }

@@ -1,5 +1,6 @@
 // lib/viewmodels/posts_controller.dart
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../repositories/posts_repository.dart';
@@ -9,6 +10,7 @@ import '../utils/snackbars.dart';
 
 class PostsController extends GetxController {
   final PostsRepository _repo;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   PostsController(this._repo);
 
@@ -45,9 +47,54 @@ class PostsController extends GetxController {
     super.onClose();
   }
 
-  Future<void> addPost(PostModel post) async {
+  Future<void> addPost(
+      PostModel post, {
+        List<Map<String, String>>? verificationQAPairs,
+      }) async {
     final String docId = await _repo.addPost(post);
+
+    if (post.category == 'found' &&
+        verificationQAPairs != null &&
+        verificationQAPairs.isNotEmpty) {
+      await _repo.saveSecrets(postId: docId, qaPairs: verificationQAPairs);
+    }
+
+    if (post.category == 'found' && post.custody == 'admin') {
+      await _notifyAdminOfDropOff(post, docId);
+    }
+
     _runMatching(post, docId);
+  }
+
+  Future<void> _notifyAdminOfDropOff(PostModel post, String docId) async {
+    try {
+      final adminSnap = await _db
+          .collection('profiles')
+          .where('role', isEqualTo: 'admin')
+          .limit(1)
+          .get();
+
+      if (adminSnap.docs.isEmpty) return;
+
+      final adminUid = adminSnap.docs.first.id;
+
+      await _db
+          .collection('notifications')
+          .doc(adminUid)
+          .collection('items')
+          .add({
+        'title': '📦 New Item Dropped Off',
+        'body':
+        '${post.postedByName} dropped off "${post.title}" '
+            '(${post.location}) for safekeeping.',
+        'type': 'admin_dropoff',
+        'postId': docId,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      // Silent fail
+    }
   }
 
   Future<void> _runMatching(PostModel post, String docId) async {
@@ -61,15 +108,13 @@ class PostsController extends GetxController {
         'category':      post.category,
         'imageUrl':      post.imageUrl,
         'urgencyLevel':  post.urgencyLevel,
+        'custody':       post.custody,
         'postedByUid':   post.postedByUid,
         'postedByName':  post.postedByName,
         'postedByEmail': post.postedByEmail,
       };
 
-      final result = await MatchingService.findMatches(
-        postData,
-        docId,
-      );
+      final result = await MatchingService.findMatches(postData, docId);
 
       latestMatch.value = result;
 
@@ -86,9 +131,7 @@ class PostsController extends GetxController {
   void _showMatchDialog(MatchResult result) {
     Get.dialog(
       Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -102,26 +145,18 @@ class PostsController extends GetxController {
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
-                  child: Text(
-                    '🎉',
-                    style: TextStyle(fontSize: 40),
-                  ),
+                  child: Text('🎉', style: TextStyle(fontSize: 40)),
                 ),
               ),
               const SizedBox(height: 16),
               const Text(
                 'Match Found!',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.green.shade100,
                   borderRadius: BorderRadius.circular(20),
@@ -145,28 +180,21 @@ class PostsController extends GetxController {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.inventory_2_outlined,
-                        color: Colors.grey,
-                      ),
+                      const Icon(Icons.inventory_2_outlined, color: Colors.grey),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               result.matchedPost!['title'] ?? '',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style:
+                              const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             Text(
                               result.matchedPost!['location'] ?? '',
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
+                                  fontSize: 12, color: Colors.grey),
                             ),
                           ],
                         ),
@@ -178,21 +206,32 @@ class PostsController extends GetxController {
               Text(
                 result.reason,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade600,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Both sides must complete ownership verification '
+                      'before a chat opens.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Get.back();
-                    Get.toNamed('/chats');
+                    Get.toNamed('/notifications');
                   },
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  label: const Text('Open Chat'),
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: const Text('View Notification'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0D47A1),
                     foregroundColor: Colors.white,

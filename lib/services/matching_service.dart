@@ -5,12 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class MatchingService {
-  // Key is injected at build/run time via --dart-define, never hardcoded here.
   static const String _apiKey = String.fromEnvironment('GROQ_API_KEY');
-  static const double _threshold = 0.75; // matches SDD AI Matching Algorithm
+  static const double _threshold = 0.75;
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ── Main matching function ──
   static Future<MatchResult?> findMatches(
       Map<String, dynamic> newPost,
       String newPostId,
@@ -108,11 +106,17 @@ class MatchingService {
     }
   }
 
-  // ── Call Groq's multimodal (vision) model to compare two items ──
-  // Uses qwen/qwen3.6-27b, Groq's current vision-capable model, so the
-  // AI compares BOTH the text details AND the uploaded images (when
-  // present) — satisfying the SDD's "Multimodal AI Matching Engine"
-  // requirement (module 1.3.4), not just text semantic comparison.
+  // Strips a Groq "reasoning model" <think>...</think> preamble and
+  // any ```json code fences, leaving just the raw JSON body.
+  static String _extractJson(String raw) {
+    String cleaned = raw;
+    final thinkPattern = RegExp(r'<think>[\s\S]*?<\/think>',
+        multiLine: true, caseSensitive: false);
+    cleaned = cleaned.replaceAll(thinkPattern, '');
+    cleaned = cleaned.replaceAll('```json', '').replaceAll('```', '');
+    return cleaned.trim();
+  }
+
   static Future<Map<String, dynamic>> _compareWithGroq(
       Map<String, dynamic> post1,
       Map<String, dynamic> post2,
@@ -155,7 +159,8 @@ Consider:
 3. Are locations same or nearby campus areas?
 4. Could this be same item reported as lost and found?
 
-Reply ONLY in this exact JSON format, nothing else:
+Do not show any reasoning or thinking. Reply ONLY with the JSON
+object below, nothing else, no explanation:
 {
   "match": true or false,
   "confidence": 0.0 to 1.0,
@@ -197,17 +202,19 @@ Reply ONLY in this exact JSON format, nothing else:
             }
           ],
           'temperature': 0.1,
-          'max_tokens':  300,
+          'max_tokens':  400,
         }),
       );
 
       if (response.statusCode == 200) {
         final data    = jsonDecode(response.body);
         final text    = data['choices'][0]['message']['content'] as String;
-        final cleaned = text
-            .replaceAll('```json', '')
-            .replaceAll('```', '')
-            .trim();
+        final cleaned = _extractJson(text);
+
+        if (cleaned.isEmpty) {
+          debugPrint('Groq returned no usable content after cleanup.');
+          return {'match': false, 'confidence': 0.0, 'reason': 'Empty response'};
+        }
 
         final parsed = jsonDecode(cleaned);
         return {
@@ -233,7 +240,20 @@ Reply ONLY in this exact JSON format, nothing else:
     }
   }
 
-  // ── Handle match found ──
+  static Future<String?> _getAdminUid() async {
+    try {
+      final snap = await _db
+          .collection('profiles')
+          .where('role', isEqualTo: 'admin')
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return snap.docs.first.id;
+    } catch (e) {
+      return null;
+    }
+  }
+
   static Future<void> _handleMatch(
       Map<String, dynamic> post1,   String post1Id,
       Map<String, dynamic> post2,   String post2Id,
@@ -246,6 +266,12 @@ Reply ONLY in this exact JSON format, nothing else:
       final String lostId     = isPost1Lost ? post1Id : post2Id;
       final String foundId    = isPost1Lost ? post2Id : post1Id;
 
+      final bool heldByAdmin = foundPost['custody'] == 'admin';
+      String? adminUid;
+      if (heldByAdmin) {
+        adminUid = await _getAdminUid();
+      }
+
       final matchRef = await _db.collection('matches').add({
         'lostPostId':   lostId,
         'foundPostId':  foundId,
@@ -254,45 +280,58 @@ Reply ONLY in this exact JSON format, nothing else:
         'confidence':   score,
         'reason':       reason,
         'status':       'pending',
+        'heldByAdmin':  heldByAdmin,
         'createdAt':    FieldValue.serverTimestamp(),
       });
 
       debugPrint('Match saved: ${matchRef.id}');
 
-      final List<String> uids = [
+      final List<String> baseUids = [
         lostPost['postedByUid']  as String,
         foundPost['postedByUid'] as String,
       ]..sort();
-      final String chatId = uids.join('_');
 
-      await _db.collection('chats').doc(chatId).set({
-        'participants':  uids,
+      final String finalChatId = baseUids.join('_');
+
+      final List<String> participants = List<String>.from(baseUids);
+      if (heldByAdmin && adminUid != null && !participants.contains(adminUid)) {
+        participants.add(adminUid);
+      }
+
+      await _db.collection('chats').doc(finalChatId).set({
+        'participants':  participants,
         'itemTitle':     lostPost['title'],
         'matchId':       matchRef.id,
         'lostPostId':    lostId,
         'foundPostId':   foundId,
         'confidence':    score,
+        'heldByAdmin':   heldByAdmin,
         'lastMessage':   '🎉 AI found a possible match!',
         'lastMessageAt': FieldValue.serverTimestamp(),
         'createdAt':     FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      final String systemMessage = heldByAdmin
+          ? '🎉 AI Match Found! (${(score * 100).round()}% confidence)\n'
+          'Reason: $reason\n'
+          'This item was dropped off with the Lost & Found admin — '
+          'once verification is complete, admin will arrange handover.'
+          : '🎉 AI Match Found! (${(score * 100).round()}% confidence)\n'
+          'Reason: $reason\n'
+          'Chat now to verify and arrange return!';
+
       await _db
           .collection('chats')
-          .doc(chatId)
+          .doc(finalChatId)
           .collection('messages')
           .add({
         'from':      'system',
         'fromName':  'UniLost AI',
-        'text':
-        '🎉 AI Match Found! '
-            '(${(score * 100).round()}% confidence)\n'
-            'Reason: $reason\n'
-            'Chat now to verify and arrange return!',
+        'text':      systemMessage,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      debugPrint('Chat created: $chatId');
+      debugPrint('Chat created: $finalChatId');
 
       await _db
           .collection('notifications')
@@ -306,7 +345,7 @@ Reply ONLY in this exact JSON format, nothing else:
             'Confidence: ${(score * 100).round()}%',
         'type':      'match',
         'matchId':   matchRef.id,
-        'chatId':    chatId,
+        'chatId':    finalChatId,
         'read':      false,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -323,10 +362,29 @@ Reply ONLY in this exact JSON format, nothing else:
             'Confidence: ${(score * 100).round()}%',
         'type':      'match',
         'matchId':   matchRef.id,
-        'chatId':    chatId,
+        'chatId':    finalChatId,
         'read':      false,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      if (heldByAdmin && adminUid != null) {
+        await _db
+            .collection('notifications')
+            .doc(adminUid)
+            .collection('items')
+            .add({
+          'title':     '🔎 Claim Started for a Dropped-Off Item',
+          'body':
+          'A possible owner was found for '
+              '"${foundPost['title']}" that you are holding. '
+              'Confidence: ${(score * 100).round()}%',
+          'type':      'match',
+          'matchId':   matchRef.id,
+          'chatId':    finalChatId,
+          'read':      false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       debugPrint('Notifications saved!');
 
@@ -352,7 +410,6 @@ Reply ONLY in this exact JSON format, nothing else:
     }
   }
 
-  // ── Check already matched ──
   static Future<bool> _checkAlreadyMatched(
       String postId1,
       String postId2,
@@ -376,7 +433,6 @@ Reply ONLY in this exact JSON format, nothing else:
   }
 }
 
-// ── Match Result Model ──
 class MatchResult {
   final bool isMatch;
   final double confidence;

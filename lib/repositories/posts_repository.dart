@@ -17,12 +17,23 @@ class PostsRepository {
     );
   }
 
-  // Returns document ID for the matching service
   Future<String> addPost(PostModel post) async {
     final doc = await _db
         .collection('posts')
         .add(post.toFirestore());
     return doc.id;
+  }
+
+  // Saves up to 3 hidden Layer 1 verification Q&A pairs for a found
+  // post. Stored as a list so the claimant can be asked several
+  // questions instead of just one.
+  Future<void> saveSecrets({
+    required String postId,
+    required List<Map<String, String>> qaPairs,
+  }) async {
+    await _db.collection('post_secrets').doc(postId).set({
+      'questions': qaPairs, // [{ "question": "...", "answer": "..." }, ...]
+    });
   }
 
   Future<void> updatePost({

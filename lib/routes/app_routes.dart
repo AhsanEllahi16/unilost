@@ -28,4 +28,6 @@ abstract class Routes {
   // chat
   static const chatsList = '/chats';
   static const chat = '/chat';
+  //verification
+  static const verification = '/verification';
 }

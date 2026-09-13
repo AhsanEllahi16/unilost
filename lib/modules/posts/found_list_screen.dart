@@ -19,7 +19,6 @@ class FoundListScreen extends StatelessWidget {
     final PostsController postsC = Get.find<PostsController>();
 
     return Scaffold(
-      // ✅ Shared AppBar with search, chat, notification icons
       appBar: const MainAppBar(title: 'Found Items'),
 
       body: Obx(() {
@@ -51,12 +50,12 @@ class FoundListScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: UniLostTheme.primary,
         foregroundColor: Colors.white,
-        onPressed: () => Get.to(() => const PostItemScreen()),
+        onPressed: () =>
+            Get.to(() => const PostItemScreen(initialCategory: 'found')),
         icon: const Icon(Icons.add),
         label: const Text('Report Found'),
       ),
 
-      // ✅ Shared bottom nav
       bottomNavigationBar: const MainBottomNav(currentIndex: 2),
     );
   }

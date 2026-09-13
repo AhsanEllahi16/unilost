@@ -19,7 +19,6 @@ class LostListScreen extends StatelessWidget {
     final PostsController postsC = Get.find<PostsController>();
 
     return Scaffold(
-      // ✅ Shared AppBar with search, chat, notification icons
       appBar: const MainAppBar(title: 'Lost Items'),
 
       body: Obx(() {
@@ -51,12 +50,12 @@ class LostListScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: UniLostTheme.primary,
         foregroundColor: Colors.white,
-        onPressed: () => Get.to(() => const PostItemScreen()),
+        onPressed: () =>
+            Get.to(() => const PostItemScreen(initialCategory: 'lost')),
         icon: const Icon(Icons.add),
         label: const Text('Report Lost'),
       ),
 
-      // ✅ Shared bottom nav
       bottomNavigationBar: const MainBottomNav(currentIndex: 1),
     );
   }

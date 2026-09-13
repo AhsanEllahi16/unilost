@@ -39,6 +39,9 @@ import '../modules/profile/notifications_screen.dart';
 import '../modules/chat/chats_list_screen.dart';
 import '../modules/chat/chat_screen.dart';
 
+//verification
+import '../modules/verification/verification_screen.dart';
+
 class AppPages {
   AppPages._();
 
@@ -137,6 +140,11 @@ class AppPages {
           chatWithUid: args['uid'] ?? '',
         );
       },
+    ),
+    // VERIFICATION
+    GetPage(
+      name: Routes.verification,
+      page: () => const VerificationScreen(),
     ),
   ];
 }
